@@ -261,13 +261,15 @@ if not day_tasks.empty and not logs_df.empty:
         m_done = m[valid_mask].copy()
 
     if not m_done.empty:
-        m_done["duration_minutes"] = pd.to_numeric(m_done["duration_minutes"], errors="coerce").fillna(0)
-        tot_d = m_done["duration_minutes"].sum()
+        study_done = m_done[m_done["category"] != "기타(산책/청소 등)"].copy()
+        
+        study_done["duration_minutes"] = pd.to_numeric(study_done["duration_minutes"], errors="coerce").fillna(0)
+        tot_d = study_done["duration_minutes"].sum()
         th, tm = int(tot_d // 60), int(tot_d % 60)
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("총 순공", f"{th}시간 {tm}분")
-        c2.metric("완료 세션", f"{len(m_done)}회")
+        c1.metric("총 순공 (기타 제외)", f"{th}시간 {tm}분")
+        c2.metric("공부 세션", f"{len(study_done)}회")
         
         if "pages_read" in m_done.columns:
             tot_p = pd.to_numeric(m_done["pages_read"], errors="coerce").sum()
