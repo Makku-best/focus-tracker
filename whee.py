@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 
 # -------------------------------------------------------------
 # 1. Google Apps Script Web App URL 설정
 # -------------------------------------------------------------
 GAS_URL = "https://script.google.com/macros/s/AKfycbz2FbQaTcmPAx-DMJGnNmhrBTBc6ZZJHd2ASmm4YWPaGzuQ7OvSL-4Gf02XFx_Vqv7ZDw/exec"
 
-st.set_page_config(page_title="Whee!!", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Focus Mission Control", page_icon="⏱️", layout="centered")
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
@@ -37,22 +38,15 @@ def post_to_gas(payload):
         st.error(f"저장 실패: {e}")
 
 # -------------------------------------------------------------
-# 3. 날짜 선택 및 과거/오늘 모드 판별
+# 3. 날짜 선택 및 과거/오늘 모드 판별 (LA 현지 시간 기준)
 # -------------------------------------------------------------
-
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
-
-# 아이가 생활하는 현지 시간대 설정 (미국 서부 기준: America/Los_Angeles, 동부면 America/New_York)
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
-
-# 아이 현지 기준의 '현재 시각'과 '오늘 날짜' 산출
 local_now = datetime.now(LOCAL_TZ)
 today_date = local_now.date()
 today_str = today_date.strftime("%Y-%m-%d")
 
 # 상단에 현지 시간 안내
-st.caption(f"🕒 아이 현지 시각: **{local_now.strftime('%Y-%m-%d %H:%M')}** (LA 시간 기준)")
+st.caption(f"🕒 현지 시각: **{local_now.strftime('%Y-%m-%d %H:%M')}** (LA 시간 기준)")
 
 selected_d = st.date_input("📅 날짜 선택 (과거 기록 조회 가능)", today_date)
 selected_date = selected_d.strftime("%Y-%m-%d")
@@ -61,8 +55,6 @@ is_today = (selected_d == today_date)
 
 if not is_today:
     st.info(f"🔒 **{selected_date} 과거 기록 조회 모드 (읽기 전용)** — 신규 등록 및 시간 조작은 오늘 날짜만 가능합니다.")
-
-
 
 # -------------------------------------------------------------
 # 4. [A] 새 미션 등록 (오늘 날짜 전용)
@@ -116,7 +108,7 @@ else:
         # 해당 Task의 세션 필터
         t_logs = pd.DataFrame()
         if not logs_df.empty and "task_id" in logs_df.columns:
-            t_logs = logs_df[logs_df["task_id"].astype(str) == str(t_id)]
+            t_logs = logs_df[logs_df["task_id"].astype(str) == str(t_id)].copy()
 
         total_mins = 0.0
         if not t_logs.empty and "duration_minutes" in t_logs.columns:
@@ -134,7 +126,7 @@ else:
                 if is_active and is_today:
                     st.markdown("🔥 <span style='color:#ff4b4b; font-weight:bold;'>진행 중 (타이머 작동 중)</span>", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"총 순공: **{time_display}** ({len(t_logs)}회 세션)")
+                    st.markdown(f"총 시간: **{time_display}** ({len(t_logs)}회 세션)")
 
             with col_act:
                 if not is_today:
@@ -169,13 +161,14 @@ else:
                                 })
                                 st.rerun()
                     else:
+                        # [공통] 현재 진행 중인 세션(end_time이 비어있는 행) 탐색
+                        active_log = pd.DataFrame()
+                        if not t_logs.empty and "end_time" in t_logs.columns:
+                            mask = t_logs["end_time"].isna() | (t_logs["end_time"].astype(str).str.strip().isin(["", "None", "null", "NaN"]))
+                            active_log = t_logs[mask]
+
                         if t_cat == "오늘 읽을 책/챕터":
                             with st.popover("⏸️ 독서 멈춤 (끝 페이지 넘버 입력)"):
-                                active_mask = pd.Series([False] * len(t_logs))
-                                if not t_logs.empty and "end_time" in t_logs.columns:
-                                    active_mask = t_logs["end_time"].isna() | (t_logs["end_time"].astype(str).str.strip() == "") | (t_logs["end_time"].astype(str).str.lower() == "none")
-                                active_log = t_logs[active_mask]
-                                
                                 curr_sp = 1
                                 if not active_log.empty and "start_page" in active_log.columns:
                                     val = active_log.iloc[-1]["start_page"]
@@ -186,29 +179,23 @@ else:
                                 et_override = st.text_input("종료 시각(필요시 수정)", value=datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"), key=f"et_ov_{t_id}")
                                 
                                 if st.button("독서 세션 종료 (휴식)", key=f"btn_stop_b_{t_id}", type="primary"):
-                                    try:
-                                        end_dt = datetime.strptime(et_override, "%Y-%m-%d %H:%M:%S")
-                                    except Exception:
-                                        end_dt = datetime.now(LOCAL_TZ)
-                                        et_override = end_dt.strftime("%Y-%m-%d %H:%M:%S")
-                                    
-                                    if not active_log.empty:
-                                        start_str = str(active_log.iloc[-1]["start_time"])
-                                    else:
-                                        start_str = et_override
+                                    now_str = et_override.strip() if et_override.strip() else datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                                    start_str = str(active_log.iloc[-1]["start_time"]) if not active_log.empty else now_str
                                     
                                     try:
-                                        start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+                                        s_ts = pd.to_datetime(start_str)
+                                        e_ts = pd.to_datetime(now_str)
+                                        diff_sec = (e_ts - s_ts).total_seconds()
+                                        duration = max(0.1, round(diff_sec / 60.0, 1))
                                     except Exception:
-                                        start_dt = end_dt
+                                        duration = 0.1
                                         
-                                    duration = max(0.1, round((end_dt - start_dt).total_seconds() / 60.0, 1))
                                     pages_read = int(ep_val - curr_sp + 1)
                                     
                                     post_to_gas({
                                         "action": "stop_session",
                                         "task_id": t_id,
-                                        "end_time": et_override,
+                                        "end_time": now_str,
                                         "duration": duration,
                                         "start_page": curr_sp,
                                         "end_page": int(ep_val),
@@ -217,22 +204,17 @@ else:
                                     st.rerun()
                         else:
                             if st.button("⏸️ 작업 멈춤 (휴식)", key=f"stop_{t_id}", type="primary"):
-                                now = datetime.now(LOCAL_TZ)
-                                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                                now_str = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                                start_str = str(active_log.iloc[-1]["start_time"]) if not active_log.empty else now_str
                                 
-                                active_mask = pd.Series([False] * len(t_logs))
-                                if not t_logs.empty and "end_time" in t_logs.columns:
-                                    active_mask = t_logs["end_time"].isna() | (t_logs["end_time"].astype(str).str.strip() == "") | (t_logs["end_time"].astype(str).str.lower() == "none")
-                                active_log = t_logs[active_mask]
-                                
-                                duration = 0.0
-                                if not active_log.empty:
-                                    s_str = str(active_log.iloc[-1]["start_time"])
-                                    try:
-                                        s_dt = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
-                                        duration = max(0.1, round((now - s_dt).total_seconds() / 60.0, 1))
-                                    except Exception:
-                                        duration = 1.0
+                                try:
+                                    # 시작 시각과 현재 시각 간 실제 소요 초(second)를 정확하게 계산
+                                    s_ts = pd.to_datetime(start_str)
+                                    e_ts = pd.to_datetime(now_str)
+                                    diff_sec = (e_ts - s_ts).total_seconds()
+                                    duration = max(0.1, round(diff_sec / 60.0, 1))
+                                except Exception:
+                                    duration = 0.1
                                 
                                 post_to_gas({
                                     "action": "stop_session",
@@ -262,7 +244,7 @@ else:
                         st.markdown(txt)
 
 # -------------------------------------------------------------
-# 6. [C] 통계 리포트 (선택한 날짜 기준)
+# 6. [C] 통계 리포트 (선택한 날짜 기준 - 기타 항목 제외)
 # -------------------------------------------------------------
 st.divider()
 st.subheader(f"📊 {selected_date} 통계 리포트")
@@ -275,13 +257,16 @@ if not day_tasks.empty and not logs_df.empty:
         m_done = m[valid_mask].copy()
 
     if not m_done.empty:
-        m_done["duration_minutes"] = pd.to_numeric(m_done["duration_minutes"], errors="coerce").fillna(0)
-        tot_d = m_done["duration_minutes"].sum()
+        # [수정] '기타(산책/청소 등)' 카테고리는 총 순공시간 및 공부 세션 합산에서 제외!
+        study_done = m_done[m_done["category"] != "기타(산책/청소 등)"].copy()
+        
+        study_done["duration_minutes"] = pd.to_numeric(study_done["duration_minutes"], errors="coerce").fillna(0)
+        tot_d = study_done["duration_minutes"].sum()
         th, tm = int(tot_d // 60), int(tot_d % 60)
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("총 순공", f"{th}시간 {tm}분")
-        c2.metric("완료 세션", f"{len(m_done)}회")
+        c1.metric("총 순공 (기타 제외)", f"{th}시간 {tm}분")
+        c2.metric("공부 세션", f"{len(study_done)}회")
         
         if "pages_read" in m_done.columns:
             tot_p = pd.to_numeric(m_done["pages_read"], errors="coerce").sum()
