@@ -8,7 +8,7 @@ from datetime import datetime, date
 # -------------------------------------------------------------
 GAS_URL = "https://script.google.com/macros/s/AKfycbz2FbQaTcmPAx-DMJGnNmhrBTBc6ZZJHd2ASmm4YWPaGzuQ7OvSL-4Gf02XFx_Vqv7ZDw/exec"
 
-st.set_page_config(page_title="Focus Mission Control", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Whee!!", page_icon="⏱️", layout="centered")
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
