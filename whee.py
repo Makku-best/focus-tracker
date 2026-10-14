@@ -16,7 +16,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("⏱️ Focus Mission Control")
+st.title("⏱️ Whee!!")
 
 # -------------------------------------------------------------
 # 2. 통신 함수 (GAS API 연동)
