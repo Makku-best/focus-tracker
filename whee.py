@@ -94,7 +94,7 @@ if is_today:
 # -------------------------------------------------------------
 # 5. [B] 미션 리스트 (오늘: 제어 가능 / 과거: 조회 전용)
 # -------------------------------------------------------------
-st.subheader(f"📋 {selected_date} 미션 현황")
+st.subheader(f"📋 {selected_date} 미션")
 
 tasks_df = fetch_sheet_data("tasks")
 logs_df = fetch_sheet_data("time_logs")
